@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import de.joeakeem.scratch.rsp.RemoteSensor;
 
-public class LoggingSensor implements RemoteSensor {
+public class LoggingSensor extends RemoteSensor {
 	
 	private static final Logger LOG = LoggerFactory.getLogger(LoggingSensor.class);
 

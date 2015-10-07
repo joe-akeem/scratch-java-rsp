@@ -1,6 +1,6 @@
 package de.joeakeem.scratch.rsp.example;
 
-import de.joeakeem.scratch.rsp.Scratch14Instance;
+import de.joeakeem.scratch.rsp.RemoteSensor;
 
 /**
  * Hello world!
@@ -10,9 +10,8 @@ public class Example
 {
     public static void main( String[] args ) throws InterruptedException
     {
-        Scratch14Instance scratch = new Scratch14Instance();
-        scratch.registerRemoteSensor(new LoggingSensor());
-        Thread t = scratch.connect();
+    	LoggingSensor sensor = new LoggingSensor();
+        Thread t = sensor.connect();
         t.join();
     }
 }

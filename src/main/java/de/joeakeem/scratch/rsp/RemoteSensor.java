@@ -1,20 +1,259 @@
 package de.joeakeem.scratch.rsp;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.Socket;
+import java.nio.ByteBuffer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
- * Represents a remote sensor that will be notified by Scratch.
+ * Represents a remote sensor of the Scratch 1.4 programming environment
+ * which can connects to Scratch on a specified host and port an receive
+ * broadcast and sensor update messages from scratch in an independent thread.
+ * If no host and/or port is specified instances of this class will try to
+ * connect to localhost:42001.
+ * 
+ * @see also http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
  * 
  * @author joe
  *
  */
-public interface RemoteSensor {
+public abstract class RemoteSensor implements Runnable {
+	
+	private static final Logger LOG = LoggerFactory.getLogger(RemoteSensor.class);
+	
+	/**
+	 * the meassage type for broadcast messages as specified
+	 * here: http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
+	 */
+	private static final String BROADCAST_MESSAGE_TYPE = "broadcast";
+	
+	/**
+	 * the meassage type for sensor update messages as specified
+	 * here: http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
+	 */
+	private static final String SENSOR_UPDATE_MESSAGE_TYPE = "sensor-update";
+	
+	/** States of the internal state machine */
+	enum ParserState {IDENTIFY_MESSAGE_TYPE, BROADCAST_MESSAGE, READ_VARIABLE_NAME, READ_VARIABLE_VALUE, DONE};
+	
+	/**
+	 * The host Scratch is listening on for remote sensor connections. Defaults to "localhost".
+	 */
+	private String scratchHost = "localhost";
+	
+	/**
+	 * The port Scratch is listening on for remote sensor connections. Defaults to 42001.
+	 */
+	private int scratchPort = 42001;
+	
+	/**
+	 * Creates a Scratch14Instance that connects to the Scratch default host and port.
+	 */
+	public RemoteSensor() {
+	}
+	
+	/**
+	 * Connects to the remote Scratch instance specified by this instances Scratch host and port
+	 * and starts receiving messages in a new thread. This method will return immediately
+	 * with the new thread it created.
+	 */
+	public Thread connect() {
+		Thread t = new Thread(this);
+		t.start();
+		return t;
+	}
 
-	void broadcast(String message);
+	/**
+	 * Connects to the remote Scratch instance specified by this instances Scratch host and port
+	 * and starts receiving messages in loop. When a message is received this instances
+	 * broadcast and sensor update methods are invoked.
+	 * 
+	 * The scratch messages are parsed according to the protocol specified
+	 * here: http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
+	 */
+	@Override
+	public void run() {
+		try (Socket socket = new Socket(scratchHost, scratchPort);
+			 InputStream inputStream = socket.getInputStream())
+		{
+			LOG.info("Connected to Scratch. Waiting for incoming messages...");
+			byte[] sizeBuf = new byte[4];
+			while (true) {
+				int readCount = inputStream.read(sizeBuf, 0, 4);
+				if (readCount != 4) {
+					throw new IOException("Expected 4 bytes for message size but got " + readCount +" instead.");
+				}
+				ByteBuffer bb = ByteBuffer.wrap(sizeBuf);
+				int messageSize = bb.getInt();
+				byte[] messageBuf = new byte[messageSize];
+				readCount = inputStream.read(messageBuf, 0, messageSize);
+				if (readCount != messageSize) {
+					throw new IOException("Expectes message of size " + messageSize + " bytes but got " + readCount + " instead.");
+				}
+				String message = new String(messageBuf, "UTF-8");
+				parseMessage(message);
+			}
+		} catch (IOException e) {
+			LOG.error("Error while communicating to Scratch", e);
+			return;
+		}
+	}
 	
-	void sensorUpdate(String name, String value);
+	/**
+	 * Parses the transmitted message that follows the 4 byte message length indicator
+	 * and calls the corresponding broadcast and sensor update methods.
+	 * 
+	 * @param message
+	 */
+	private void parseMessage(String message) {
+		ParserState state = ParserState.IDENTIFY_MESSAGE_TYPE;
+		String remainder = message;
+		String variableName = null;
+		String variableValue = null;
+		while (true) {
+			switch (state) {
+				case IDENTIFY_MESSAGE_TYPE:
+					String messageType = remainder.substring(0, message.indexOf(" "));
+					remainder = remainder.substring(messageType.length()).trim();
+					if (BROADCAST_MESSAGE_TYPE.equals(messageType)) {
+						state = ParserState.BROADCAST_MESSAGE;
+					} else if (SENSOR_UPDATE_MESSAGE_TYPE.equals(messageType)) {
+						state = ParserState.READ_VARIABLE_NAME;
+					} else {
+						otherMessage(message);
+						state = ParserState.DONE;
+					}
+					break;
+				case BROADCAST_MESSAGE:
+					String broadcastMsg;
+					if (remainder.startsWith("\"")) {
+						broadcastMsg = remainder.substring(1, remainder.indexOf("\"", 1));
+					} else {
+						// according to the protocol this
+						// should not contain any spaces any more...
+						broadcastMsg = remainder;
+					}
+					broadcast(broadcastMsg);
+					state = ParserState.DONE;
+					break;
+				case READ_VARIABLE_NAME:
+					variableName = remainder.substring(1, remainder.indexOf("\"", 1));
+					remainder = remainder.substring(remainder.indexOf("\"", 1) + 1).trim();
+					state = ParserState.READ_VARIABLE_VALUE;
+					break;
+				case READ_VARIABLE_VALUE:
+					if (remainder.startsWith("\"")) {
+						variableValue = remainder.substring(1, remainder.indexOf("\"", 1));
+						remainder = remainder.substring(remainder.indexOf("\"", 1) + 1).trim();
+					} else {
+						int next = remainder.indexOf(" ");
+						if (next != -1) {
+							variableValue = remainder.substring(0, next);
+							remainder = remainder.substring(next).trim();
+						} else {
+							variableValue = remainder.substring(0);
+							remainder = "";
+						}
+						
+					}
+					switchSensorUpdateMessage(variableName, variableValue);
+					if (remainder.length() > 0) {
+						state = ParserState.READ_VARIABLE_NAME;
+					} else {
+						state = ParserState.DONE;
+					}
+					break;
+				case DONE:
+					return;
+				default:
+					throw new IllegalStateException("Unhandled state " + state);
+			}
+		}
+	}
 	
-	void sensorUpdate(String name, double value);
+	private synchronized void switchSensorUpdateMessage(String name, String value) {
+		Double doubleValue = null;
+		Boolean booleanValue = null;
+		String stringValue = null;
+		try {
+			doubleValue = Double.parseDouble(value);
+		} catch (NumberFormatException e) {
+			if ("true".equals(value.toLowerCase()) || "false".equals(value.toLowerCase())) {
+				booleanValue = Boolean.parseBoolean(value);
+			} else {
+				stringValue = value;
+			}
+		}
+		
+		if (doubleValue != null) {
+			sensorUpdate(name, doubleValue);
+		} else if (booleanValue != null) {
+			sensorUpdate(name, booleanValue);
+		} else {
+			sensorUpdate(name, stringValue);
+		}
+	}
 	
-	void sensorUpdate(String name, boolean value);
+	/**
+	 * This method is invoked if this RemoteSensor received a broadcast
+	 * message from Scratch.
+	 * 
+	 * @param message - the broadcast message that was transmitted by Scratch
+	 */
+	protected abstract void broadcast(String message);
 	
-	void otherMessage(String message);
+	/**
+	 * This method is invoked if this RemoteSensor received a sensor
+	 * update message of type String from Scratch.
+	 * 
+	 *  @param name - the name of the sensor to update
+	 *  @param value - the value to set the sensor to
+	 */
+	protected abstract void sensorUpdate(String name, String value);
+	
+	/**
+	 * This method is invoked if this RemoteSensor received a sensor
+	 * update message of type Double from Scratch.
+	 * 
+	 *  @param name - the name of the sensor to update
+	 *  @param value - the value to set the sensor to
+	 */
+	protected abstract void sensorUpdate(String name, double value);
+	
+	/**
+	 * This method is invoked if this RemoteSensor received a sensor
+	 * update message of type Boolean from Scratch.
+	 * 
+	 *  @param name - the name of the sensor to update
+	 *  @param value - the value to set the sensor to
+	 */
+	protected abstract void sensorUpdate(String name, boolean value);
+	
+	/**
+	 * This method is invoked if this RemoteSensor received an
+ 	 * unknown message from Scratch.
+	 * 
+	 *  @param message - the complete message as received from Scratch
+	 */
+	protected abstract void otherMessage(String message);
+
+	public String getScratchHost() {
+		return scratchHost;
+	}
+
+	public void setScratchHost(String scratchHost) {
+		this.scratchHost = scratchHost;
+	}
+
+	public int getScratchPort() {
+		return scratchPort;
+	}
+
+	public void setScratchPort(int scratchPort) {
+		this.scratchPort = scratchPort;
+	}
+
 }
