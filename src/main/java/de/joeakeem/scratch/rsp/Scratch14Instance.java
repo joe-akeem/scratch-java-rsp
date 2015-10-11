@@ -113,4 +113,20 @@ public class Scratch14Instance {
 	public void sensorUpdate(String name, boolean value) throws IOException {
 		// TODO:
 	}
+
+	public String getScratchHost() {
+		return scratchHost;
+	}
+
+	public void setScratchHost(String scratchHost) {
+		this.scratchHost = scratchHost;
+	}
+
+	public int getScratchPort() {
+		return scratchPort;
+	}
+
+	public void setScratchPort(int scratchPort) {
+		this.scratchPort = scratchPort;
+	}
 }
