@@ -7,6 +7,9 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Represents a Scratch 1.4 instance to which broadcast messages and
  * sensor updates can be sent.
@@ -16,21 +19,17 @@ import java.nio.charset.Charset;
  */
 public class Scratch14Instance {
 	
-	/**
-	 * the meassage type for broadcast messages as specified
-	 * here: http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
-	 */
-	private static final String BROADCAST_MESSAGE_TYPE = "broadcast"; 
+	private static final Logger LOG = LoggerFactory.getLogger(Scratch14Instance.class);
 	
 	/**
-	 * The host Scratch is listening on for remote sensor connections. Defaults to "localhost".
+	 * The host Scratch is listening on for remote sensor connections.
 	 */
-	private String scratchHost = "localhost";
+	private String scratchHost = Constants.SCRATCH_DEFAULT_HOST;
 	
 	/**
-	 * The port Scratch is listening on for remote sensor connections. Defaults to 42001.
+	 * The port Scratch is listening on for remote sensor connections.
 	 */
-	private int scratchPort = 42001;
+	private int scratchPort = Constants.SCRATCH_DEFAULT_PORT;
 	
 	/**
 	 * The socket that is used to connect to Scratch. This will be
@@ -45,10 +44,29 @@ public class Scratch14Instance {
 	private OutputStream outputStream;
 	
 	/**
-	 * Connects to the remote Scratch instance specified by this instances Scratch host and port.
-	 * Once this instance is connected to Scratch it can start sending messages to Scratch.
-	 * @throws IOException 
-	 * @throws UnknownHostException 
+	 * Creates a Scratch14Instance that connects to Scratch using the default host and port.
+	 */
+	public Scratch14Instance() {
+	}
+	
+	/**
+	 * Creates a Scratch14Instance that connects to Scratch using the specified host and port.
+	 * 
+	 * @param scratchHost - the host Scratch is running on
+	 * @param scratchPort - the port Scratch is running on
+	 */
+	public Scratch14Instance(String scratchHost, int scratchPort) {
+		this.scratchHost = scratchHost;
+		this.scratchPort = scratchPort;
+	}
+	
+	/**
+	 * Connects to the remote Scratch instance specified by this instances host and port.
+	 * Once this instance is connected to Scratch it can start sending broadcast messages
+	 * and sensor updates to Scratch.
+	 * 
+	 * @throws IOException - if connecting to Scratch failes 
+	 * @throws UnknownHostException - if the specified host is not known
 	 */
 	public void connect() throws UnknownHostException, IOException {
 		socket = new Socket(scratchHost, scratchPort);
@@ -57,7 +75,8 @@ public class Scratch14Instance {
 
 	/**
 	 * Disconnects from the remote Scratch instance.
-	 * @throws IOException
+	 * 
+	 * @throws IOException - if disconnecting fails.
 	 */
 	public void disconnect() throws IOException {
 		if (outputStream != null) {
@@ -72,13 +91,14 @@ public class Scratch14Instance {
 	 * Sends a broadcast message to the remote Scratch instance.
 	 * 
 	 * @param message - the message to be sent to Scratch
-	 * @throws IOException 
+	 * @throws IOException - if an I/O error occurs.
 	 */
 	public void broadcast(String message) throws IOException {
-		String broadcastMessage = BROADCAST_MESSAGE_TYPE + " " + "\"" + message + "\"";
+		String broadcastMessage = Constants.BROADCAST_MESSAGE_TYPE + " \"" + message + "\"";
 		byte[] messageSize = ByteBuffer.allocate(4).putInt(broadcastMessage.length()).array();
 		outputStream.write(messageSize);
 		outputStream.write(broadcastMessage.getBytes(Charset.forName("UTF-8")));
+		LOG.info("Sent broadcast message '{}' to Scratch.", message);
 	}
 
 	/**
@@ -86,21 +106,23 @@ public class Scratch14Instance {
 	 * 
 	 * @param name - the remote variable to update
 	 * @param value - the value to set the variable to
-	 * @throws IOException
+	 * @throws IOException - if an I/O error occurs.
 	 */
 	public void sensorUpdate(String name, String value) throws IOException {
-		// TODO:
+		String sensorUpdateMessage = Constants.SENSOR_UPDATE_MESSAGE_TYPE + " \"" + name + "\" \"" + value + "\"";
+		sendSensorUpdateMessage(sensorUpdateMessage);
 	}
-	
+
 	/**
 	 * Sends a sensor update message to the remote Scratch instance.
 	 * 
 	 * @param name - the remote variable to update
 	 * @param value - the value to set the variable to
-	 * @throws IOException
+	 * @throws IOException - if an I/O error occurs.
 	 */
 	public void sensorUpdate(String name, double value) throws IOException {
-		// TODO:
+		String sensorUpdateMessage = Constants.SENSOR_UPDATE_MESSAGE_TYPE + " \"" + name + "\" " + value;
+		sendSensorUpdateMessage(sensorUpdateMessage);
 	}
 	
 	/**
@@ -108,10 +130,19 @@ public class Scratch14Instance {
 	 * 
 	 * @param name - the remote variable to update
 	 * @param value - the value to set the variable to
-	 * @throws IOException
+	 * @throws IOException - if an I/O error occurs.
 	 */
 	public void sensorUpdate(String name, boolean value) throws IOException {
-		// TODO:
+		String sensorUpdateMessage = Constants.SENSOR_UPDATE_MESSAGE_TYPE + " \"" + name + "\" " + value;
+		sendSensorUpdateMessage(sensorUpdateMessage);
+	}
+
+	private void sendSensorUpdateMessage(String sensorUpdateMessage)
+			throws IOException {
+		byte[] messageSize = ByteBuffer.allocate(4).putInt(sensorUpdateMessage.length()).array();
+		outputStream.write(messageSize);
+		outputStream.write(sensorUpdateMessage.getBytes(Charset.forName("UTF-8")));
+		LOG.info("Sent sensor update '{}' to Scratch.", sensorUpdateMessage);
 	}
 
 	public String getScratchHost() {

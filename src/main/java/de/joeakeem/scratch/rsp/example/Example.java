@@ -1,7 +1,5 @@
 package de.joeakeem.scratch.rsp.example;
 
-import de.joeakeem.scratch.rsp.RemoteSensor;
-
 /**
  * Hello world!
  *

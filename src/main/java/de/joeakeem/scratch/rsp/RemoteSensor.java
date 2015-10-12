@@ -10,8 +10,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Represents a remote sensor of the Scratch 1.4 programming environment
- * which can connects to Scratch on a specified host and port an receive
- * broadcast and sensor update messages from scratch in an independent thread.
+ * which can connect to Scratch on a specified host and port an receive
+ * broadcast and sensor update messages from in an independent thread.
  * If no host and/or port is specified instances of this class will try to
  * connect to localhost:42001.
  * 
@@ -25,38 +25,39 @@ public abstract class RemoteSensor implements Runnable {
 	private static final Logger LOG = LoggerFactory.getLogger(RemoteSensor.class);
 	
 	/**
-	 * the meassage type for broadcast messages as specified
-	 * here: http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
+	 *  Possible states of the internal state machine
 	 */
-	private static final String BROADCAST_MESSAGE_TYPE = "broadcast";
+	private enum ParserState {IDENTIFY_MESSAGE_TYPE, BROADCAST_MESSAGE, READ_VARIABLE_NAME, READ_VARIABLE_VALUE, DONE};
 	
 	/**
-	 * the meassage type for sensor update messages as specified
-	 * here: http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
+	 * The host Scratch is listening on for remote sensor connections.
 	 */
-	private static final String SENSOR_UPDATE_MESSAGE_TYPE = "sensor-update";
-	
-	/** States of the internal state machine */
-	enum ParserState {IDENTIFY_MESSAGE_TYPE, BROADCAST_MESSAGE, READ_VARIABLE_NAME, READ_VARIABLE_VALUE, DONE};
+	private String scratchHost = Constants.SCRATCH_DEFAULT_HOST;
 	
 	/**
-	 * The host Scratch is listening on for remote sensor connections. Defaults to "localhost".
+	 * The port Scratch is listening on for remote sensor connections.
 	 */
-	private String scratchHost = "localhost";
+	private int scratchPort = Constants.SCRATCH_DEFAULT_PORT;
 	
 	/**
-	 * The port Scratch is listening on for remote sensor connections. Defaults to 42001.
-	 */
-	private int scratchPort = 42001;
-	
-	/**
-	 * Creates a Scratch14Instance that connects to the Scratch default host and port.
+	 * Creates a RemoteSensor that connects to Scratch using the default host and port.
 	 */
 	public RemoteSensor() {
 	}
 	
 	/**
-	 * Connects to the remote Scratch instance specified by this instances Scratch host and port
+	 * Creates a RemoteSensor that connects to Scratch using the specified host and port.
+	 * 
+	 * @param scratchHost - the host Scratch is running on
+	 * @param scratchPort - the port Scratch is running on
+	 */
+	public RemoteSensor(String scratchHost, int scratchPort) {
+		this.scratchHost = scratchHost;
+		this.scratchPort = scratchPort;
+	}
+	
+	/**
+	 * Connects to the remote Scratch instance specified by this instances host and port
 	 * and starts receiving messages in a new thread. This method will return immediately
 	 * with the new thread it created.
 	 */
@@ -67,12 +68,12 @@ public abstract class RemoteSensor implements Runnable {
 	}
 
 	/**
-	 * Connects to the remote Scratch instance specified by this instances Scratch host and port
+	 * Connects to the remote Scratch instance specified by this instances host and port
 	 * and starts receiving messages in loop. When a message is received this instances
 	 * broadcast and sensor update methods are invoked.
 	 * 
 	 * The scratch messages are parsed according to the protocol specified
-	 * here: http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol
+	 * here: <a href="http://wiki.scratch.mit.edu/wiki/Remote_Sensors_Protocol">Scratch Remote Sensor Protocol</a>
 	 */
 	@Override
 	public void run() {
@@ -118,9 +119,9 @@ public abstract class RemoteSensor implements Runnable {
 				case IDENTIFY_MESSAGE_TYPE:
 					String messageType = remainder.substring(0, message.indexOf(" "));
 					remainder = remainder.substring(messageType.length()).trim();
-					if (BROADCAST_MESSAGE_TYPE.equals(messageType)) {
+					if (Constants.BROADCAST_MESSAGE_TYPE.equals(messageType)) {
 						state = ParserState.BROADCAST_MESSAGE;
-					} else if (SENSOR_UPDATE_MESSAGE_TYPE.equals(messageType)) {
+					} else if (Constants.SENSOR_UPDATE_MESSAGE_TYPE.equals(messageType)) {
 						state = ParserState.READ_VARIABLE_NAME;
 					} else {
 						otherMessage(message);
