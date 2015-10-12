@@ -39,6 +39,6 @@ The example will simply log all received broadcast messages and sensor updates r
 mvn exec:java
 ```
 
-Without any further configuration it will try connect to Scratch on host 'localhost' and port '42001'. if Scratch is running on another host and/or port you can pass the a host and port to the RemoteSensor and Scratch14Instance classes.
+Without any further configuration it will try to connect to Scratch on host 'localhost' and port '42001'. if Scratch is running on another host and/or port you can pass the a host and port to the RemoteSensor and Scratch14Instance classes.
 
 Also have a look at the example: src/main/java/de/joeakeem/scratch/rsp/example/Example.java
