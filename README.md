@@ -14,7 +14,7 @@ git clone https://github.com/joe-akeem/scratch-java-rsp.git
 ...and build it:
 ``` shell
 cd scratch-java-rsp
-sudo /opt/apache-maven-3.3.3/bin/mvn install
+mvn install
 ```
 
 This will install the scratch-java-rsp library in your local Maven repository to be used by other projects such as the [Scratch Robot](https://github.com/joe-akeem/scratch-robot)
